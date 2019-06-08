@@ -45,20 +45,13 @@ credential creation and requests signing.
 Installation
 ============
 
-The python wrapper works with Python 2.7 and Python 3.4+.
+The python wrapper works with Python 3.7+.
 
-The easiest way to get the latest stable release is to grab it from `pypi
-<https://pypi.python.org/pypi/ovh>`_ using ``pip``.
-
-.. code:: bash
-
-    pip install ovh
-
-Alternatively, you may get latest development version directly from Git.
+you may get latest development version directly from Git.
 
 .. code:: bash
 
-    pip install -e git+https://github.com/ovh/python-ovh.git#egg=ovh
+    pip install -e git+https://github.com/ovh/python-asyncovh.git#egg=ovh
 
 Example Usage
 =============

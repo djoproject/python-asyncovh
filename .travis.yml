@@ -1,9 +1,6 @@
 language: python
 python:
-  - "2.7"
-  - "3.4"
-  - "3.5"
-  - "3.6"
+  - "3.7"
   - "nightly"
 jobs:
   allow_failures:
@@ -23,7 +20,7 @@ deploy:
   on:
     branch: master
     tags: true
-    python: '3.6'
+    python: '3.7'
 after_success:
     coveralls
 sudo: false

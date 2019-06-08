@@ -1,6 +1,10 @@
 Changelog
 =========
 
+## 0.6.0 (2019-06-08)
+ - [fork] fork from original project
+ - [enhancement] update the project to work with asyncio
+
 ## 0.5.0 (2018-12-13)
  - [compatibility] drop support for EOL Python 2.6, 3.2 and 3.3 (#71)
  - [feature] Add OVH US endpoint (#63 #70)
