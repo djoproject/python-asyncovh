@@ -56,7 +56,8 @@ The client will successively attempt to locate this configuration file in
 
 1. Current working directory: ``./ovh.conf``
 2. Current user's home directory ``~/.ovh.conf``
-3. System wide configuration ``/etc/ovh.conf``
+3. Current user's home directory ``~/.ovhrc``
+4. System wide configuration ``/etc/ovh.conf``
 
 This lookup mechanism makes it easy to overload credentials for a specific
 project or user.
