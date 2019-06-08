@@ -64,6 +64,8 @@ project or user.
 
 import os
 
+import aiofile
+
 try:
     from ConfigParser import RawConfigParser, NoSectionError, NoOptionError
 except ImportError: # pragma: no cover
@@ -76,6 +78,7 @@ __all__ = ['config']
 CONFIG_PATH = [
     '/etc/ovh.conf',
     os.path.expanduser('~/.ovh.conf'),
+    os.path.expanduser('~/.ovhrc'),
     os.path.realpath('./ovh.conf'),
 ]
 
@@ -117,9 +120,11 @@ class ConfigurationManager(object):
         # not found, sorry
         return None
 
-    def read(self, config_file):
+    async def read(self, config_file):
         # Read an other config file
-        self.config.read(config_file)
+
+        async with aiofile.AIOFile(config_file, 'r') as afp:
+            self.config.read_string(await afp.read())
 
 #: System wide instance :py:class:`ConfigurationManager` instance
 config = ConfigurationManager()

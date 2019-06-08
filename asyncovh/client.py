@@ -1,4 +1,5 @@
-# -*- encoding: utf-8 -*-
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 #
 # Copyright (c) 2013-2018, OVH SAS.
 # All rights reserved.
@@ -34,33 +35,16 @@ It handles requesting credential, signing queries...
  - To get started with API: https://api.ovh.com/g934.first_step_with_api
 """
 
+import asyncio
 import hashlib
-import urllib
+import json
 import keyword
 import time
-import json
 
-try:
-    from urllib import urlencode
-except ImportError: # pragma: no cover
-    # Python 3
-    from urllib.parse import urlencode
+import aiofiles
+import aiohttp
 
-from .vendor.requests import request, Session
-from .vendor.requests.packages import urllib3
-from .vendor.requests.exceptions import RequestException
-
-# Disable pyopenssl. It breaks SSL connection pool when SSL connection is
-# closed unexpectedly by the server. And we don't need SNI anyway.
-try:
-    from .vendor.requests.packages.urllib3.contrib import pyopenssl
-    pyopenssl.extract_from_urllib3()
-except ImportError:
-    pass
-
-# Disable SNI related Warning. The API does not rely on it
-urllib3.disable_warnings(urllib3.exceptions.SNIMissingWarning)
-urllib3.disable_warnings(urllib3.exceptions.SecurityWarning)
+from aiohttp import ClientSession
 
 from .config import config
 from .consumer_key import ConsumerKeyRequest
@@ -84,7 +68,6 @@ ENDPOINTS = {
 
 #: Default timeout for each request. 180 seconds connect, 180 seconds read.
 TIMEOUT = 180
-
 
 class Client(object):
     """
@@ -119,8 +102,8 @@ class Client(object):
     """
 
     def __init__(self, endpoint=None, application_key=None,
-                 application_secret=None, consumer_key=None, timeout=TIMEOUT,
-                 config_file=None):
+                 application_secret=None, consumer_key=None, 
+                 timeout=TIMEOUT):
         """
         Creates a new Client. No credential check is done at this point.
 
@@ -150,46 +133,61 @@ class Client(object):
         :param float timeout: Same timeout for both connection and read
         :raises InvalidRegion: if ``endpoint`` can't be found in ``ENDPOINTS``.
         """
-        # Load a custom config file if requested
-        if config_file is not None:
-            config.read(config_file)
 
-        # load endpoint
-        if endpoint is None:
-            endpoint = config.get('default', 'endpoint')
+        self.endpoint = endpoint
+        self.application_key = application_key
+        self.application_secret = application_secret
+        self.consumer_key = consumer_key
 
-        try:
-            self._endpoint = ENDPOINTS[endpoint]
-        except KeyError:
-            raise InvalidRegion("Unknown endpoint %s. Valid endpoints: %s",
-                                endpoint, ENDPOINTS.keys())
-
-        # load keys
-        if application_key is None:
-            application_key = config.get(endpoint, 'application_key')
-        self._application_key = application_key
-
-        if application_secret is None:
-            application_secret = config.get(endpoint, 'application_secret')
-        self._application_secret = application_secret
-
-        if consumer_key is None:
-            consumer_key = config.get(endpoint, 'consumer_key')
-        self._consumer_key = consumer_key
+        # set to default
+        self._endpoint = ENDPOINTS['ovh-eu']
 
         # lazy load time delta
         self._time_delta = None
 
         # use a requests session to reuse HTTPS connections between requests
-        self._session = Session()
+        self._session = ClientSession()
 
         # Override default timeout
         self._timeout = timeout
 
+
+    async def init(self, config_file=None):
+        # Load a custom config file if requested
+        if config_file is not None:
+            await config.read(config_file)
+
+        # load endpoint
+        endpoint = self.endpoint
+
+        if endpoint is None:
+            endpoint = config.get('default', 'endpoint')
+
+        if endpoint is not None:
+            try:
+                self._endpoint = ENDPOINTS[endpoint]
+            except KeyError:
+                raise InvalidRegion("Unknown endpoint %s. Valid endpoints: %s", endpoint, ENDPOINTS.keys())
+
+        # load keys
+        if self.application_key is None:
+            self.application_key = config.get(endpoint, 'application_key')
+
+        self._application_key = self.application_key
+
+        if self.application_secret is None:
+            self.application_secret = config.get(endpoint, 'application_secret')
+
+        self._application_secret = self.application_secret
+
+        if self.consumer_key is None:
+            self.consumer_key = config.get(endpoint, 'consumer_key')
+
+        self._consumer_key = self.consumer_key
+
     ## high level API
 
-    @property
-    def time_delta(self):
+    async def get_time_delta(self):
         """
         Request signatures are valid only for a short amount of time to mitigate
         risk of attack replay scenarii which requires to use a common time
@@ -205,7 +203,7 @@ class Client(object):
         :rtype: int
         """
         if self._time_delta is None:
-            server_time = self.get('/auth/time', _need_auth=False)
+            server_time = await self.get('/auth/time', _need_auth=False)
             self._time_delta = server_time - int(time.time())
         return self._time_delta
 
@@ -230,7 +228,7 @@ class Client(object):
         """
         return ConsumerKeyRequest(self)
 
-    def request_consumerkey(self, access_rules, redirect_url=None):
+    async def request_consumerkey(self, access_rules, redirect_url=None):
         """
         Create a new "consumer key" identifying this application's end user. API
         will return a ``consumerKey`` and a ``validationUrl``. The end user must
@@ -282,8 +280,8 @@ class Client(object):
         :returns: dict with ``consumerKey`` and ``validationUrl`` keys
         :rtype: dict
         """
-        res = self.post('/auth/credential', _need_auth=False,
-                        accessRules=access_rules, redirection=redirect_url)
+        res = await self.post('/auth/credential', _need_auth=False,
+                              accessRules=access_rules, redirection=redirect_url)
         self._consumer_key = res['consumerKey']
         return res
 
@@ -324,7 +322,7 @@ class Client(object):
 
         return urlencode(arguments)
 
-    def get(self, _target, _need_auth=True, **kwargs):
+    async def get(self, _target, _need_auth=True, **kwargs):
         """
         'GET' :py:func:`Client.call` wrapper.
 
@@ -344,9 +342,9 @@ class Client(object):
             else:
                 _target = '%s?%s' % (_target, query_string)
 
-        return self.call('GET', _target, None, _need_auth)
+        return await self.call('GET', _target, None, _need_auth)
 
-    def put(self, _target, _need_auth=True, **kwargs):
+    async def put(self, _target, _need_auth=True, **kwargs):
         """
         'PUT' :py:func:`Client.call` wrapper
 
@@ -359,9 +357,9 @@ class Client(object):
             the default
         """
         kwargs = self._canonicalize_kwargs(kwargs)
-        return self.call('PUT', _target, kwargs, _need_auth)
+        return await self.call('PUT', _target, kwargs, _need_auth)
 
-    def post(self, _target, _need_auth=True, **kwargs):
+    async def post(self, _target, _need_auth=True, **kwargs):
         """
         'POST' :py:func:`Client.call` wrapper
 
@@ -374,9 +372,9 @@ class Client(object):
             the default
         """
         kwargs = self._canonicalize_kwargs(kwargs)
-        return self.call('POST', _target, kwargs, _need_auth)
+        return await self.call('POST', _target, kwargs, _need_auth)
 
-    def delete(self, _target, _need_auth=True):
+    async def delete(self, _target, _need_auth=True):
         """
         'DELETE' :py:func:`Client.call` wrapper
 
@@ -384,11 +382,11 @@ class Client(object):
         :param string _need_auth: If True, send authentication headers. This is
             the default
         """
-        return self.call('DELETE', _target, None, _need_auth)
+        return await self.call('DELETE', _target, None, _need_auth)
 
     ## low level helpers
 
-    def call(self, method, path, data=None, need_auth=True):
+    async def call(self, method, path, data=None, need_auth=True):
         """
         Low level call helper. If ``consumer_key`` is not ``None``, inject
         authentication headers and sign the request.
@@ -410,15 +408,15 @@ class Client(object):
         """
         # attempt request
         try:
-            result = self.raw_call(method=method, path=path, data=data, need_auth=need_auth)
-        except RequestException as error:
+            result = await self.raw_call(method=method, path=path, data=data, need_auth=need_auth)
+        except RequestException as error:  # TODO
             raise HTTPError("Low HTTP request failed error", error)
 
-        status = result.status_code
+        status = result.status
 
         # attempt to decode and return the response
         try:
-            json_result = result.json()
+            json_result = await result.json()
         except ValueError as error:
             raise InvalidResponse("Failed to decode API response", error)
 
@@ -455,7 +453,7 @@ class Client(object):
         else:
             raise APIError(json_result.get('message'), response=result)
 
-    def raw_call(self, method, path, data=None, need_auth=True):
+    async def raw_call(self, method, path, data=None, need_auth=True):
         """
         Lowest level call helper. If ``consumer_key`` is not ``None``, inject
         authentication headers and sign the request.
@@ -496,11 +494,15 @@ class Client(object):
                 raise InvalidKey("Invalid ConsumerKey '%s'" %
                                  self._consumer_key)
 
-            now = str(int(time.time()) + self.time_delta)
+            time_delta = await self.get_time_delta()
+
+            now = str(int(time.time()) + time_delta)
             signature = hashlib.sha1()
             signature.update("+".join([
-                self._application_secret, self._consumer_key,
-                method.upper(), target,
+                self._application_secret,
+                self._consumer_key,
+                method.upper(),
+                target,
                 body,
                 now
             ]).encode('utf-8'))
@@ -509,5 +511,5 @@ class Client(object):
             headers['X-Ovh-Timestamp'] = now
             headers['X-Ovh-Signature'] = "$1$" + signature.hexdigest()
 
-        return self._session.request(method, target, headers=headers,
-                                     data=body, timeout=self._timeout)
+        return await self._session.request(method, target, headers=headers,
+                                           data=body, timeout=self._timeout)
