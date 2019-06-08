@@ -1,3 +1,11 @@
+python-asyncovh (0.6.0) trusty; urgency=medium
+
+  * New upstream release v0.6.0
+  * [fork] fork from original project
+  * [enhancement] update the project to work with asyncio
+
+ -- Jonathan Delvaux <github@djoproject.net>  Sat, 08 Dec 2019 14:11:12 +0200
+
 python-ovh (0.5.0) trusty; urgency=medium
 
   * New upstream release v0.5.0

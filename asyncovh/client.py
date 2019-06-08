@@ -409,7 +409,7 @@ class Client(object):
         # attempt request
         try:
             result = await self.raw_call(method=method, path=path, data=data, need_auth=need_auth)
-        except RequestException as error:  # TODO
+        except aiohttp.ClientError as error:
             raise HTTPError("Low HTTP request failed error", error)
 
         status = result.status

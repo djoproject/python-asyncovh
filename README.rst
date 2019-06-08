@@ -1,46 +1,53 @@
 .. image:: https://github.com/ovh/python-ovh/raw/master/docs/img/logo.png
            :alt: Python & OVH APIs
-           :target: https://pypi.python.org/pypi/ovh
 
 Lightweight wrapper around OVH's APIs. Handles all the hard work including
 credential creation and requests signing.
 
-.. image:: https://img.shields.io/pypi/v/ovh.svg
-           :alt: PyPi Version
-           :target: https://pypi.python.org/pypi/ovh
 .. image:: https://img.shields.io/pypi/status/ovh.svg
            :alt: PyPi repository status
-           :target: https://pypi.python.org/pypi/ovh
-.. image:: https://img.shields.io/pypi/pyversions/ovh.svg
+           :target: https://github.com/djoproject/python-asyncovh
+.. image:: https://img.shields.io/badge/python-3.7%2B-blue.svg
            :alt: PyPi supported Python versions
-           :target: https://pypi.python.org/pypi/ovh
-.. image:: https://img.shields.io/pypi/wheel/ovh.svg
-           :alt: PyPi Wheel status
-           :target: https://pypi.python.org/pypi/ovh
+           :target: https://github.com/djoproject/python-asyncovh
 .. image:: https://travis-ci.org/ovh/python-ovh.svg?branch=master
            :alt: Build Status
-           :target: https://travis-ci.org/ovh/python-ovh
+           :target: https://github.com/djoproject/python-asyncovh
 .. image:: https://coveralls.io/repos/github/ovh/python-ovh/badge.svg
            :alt: Coverage Status
-           :target: https://coveralls.io/github/ovh/python-ovh
+           :target: https://github.com/djoproject/python-asyncovh
+.. image:: https://img.shields.io/badge/asyncio-yes-blueviolet.svg
+           :alt: asyncio
+           :target: https://github.com/djoproject/python-asyncovh
 
 .. code:: python
 
-    # -*- encoding: utf-8 -*-
+    #!/usr/bin/env python3
+    # -*- coding: utf-8 -*-
 
-    import ovh
+    import asyncio
+    import asyncovh
 
-    # Instantiate. Visit https://api.ovh.com/createToken/?GET=/me
-    # to get your credentials
-    client = ovh.Client(
-        endpoint='ovh-eu',
-        application_key='<application key>',
-        application_secret='<application secret>',
-        consumer_key='<consumer key>',
-    )
+    async def main():
+        # Instantiate. Visit https://api.ovh.com/createToken/?GET=/me
+        # to get your credentials
+        client = asyncovh.Client(
+            endpoint='ovh-eu',
+            application_key='<application key>',
+            application_secret='<application secret>',
+            consumer_key='<consumer key>',
+        )
 
-    # Print nice welcome message
-    print "Welcome", client.get('/me')['firstname']
+        # finish configuration (it may read files)
+        await client.init(config_file=None)
+
+        async with client._session:
+            client_data = await client.get('/me')
+
+        # Print nice welcome message
+        print ("Welcome", client_data['firstname'])
+
+    asyncio.run(main())
 
 Installation
 ============
@@ -51,7 +58,7 @@ you may get latest development version directly from Git.
 
 .. code:: bash
 
-    pip install -e git+https://github.com/ovh/python-asyncovh.git#egg=ovh
+    pip install -e git+https://github.com/djoproject/python-asyncovh.git#egg=ovh
 
 Example Usage
 =============
@@ -124,26 +131,37 @@ customer's information:
 
 .. code:: python
 
-    # -*- encoding: utf-8 -*-
+    #!/usr/bin/env python3
+    # -*- coding: utf-8 -*-
 
-    import ovh
+    import asyncio
+    import asyncovh
 
-    # create a client using configuration
-    client = ovh.Client()
+    async def main():
+        # create a client using configuration
+        client = asyncovh.Client()
 
-    # Request RO, /me API access
-    ck = client.new_consumer_key_request()
-    ck.add_rules(ovh.API_READ_ONLY, "/me")
+        # finish configuration (it may read files)
+        await client.init(config_file=None)
 
-    # Request token
-    validation = ck.request()
+        # Request RO, /me API access
+        ck = client.new_consumer_key_request()
+        ck.add_rules(asyncovh.API_READ_ONLY, "/me")
 
-    print "Please visit %s to authenticate" % validation['validationUrl']
-    raw_input("and press Enter to continue...")
+        # Request token
+        async with client._session:
+            validation = await ck.request()
 
-    # Print nice welcome message
-    print "Welcome", client.get('/me')['firstname']
-    print "Btw, your 'consumerKey' is '%s'" % validation['consumerKey']
+            print("Please visit {0} to authenticate".format(validation['validationUrl']))
+            input("and press Enter to continue...")
+
+            # Print nice welcome message
+            client_data = await client.get('/me')
+
+            print("Welcome {0}".format(client_data['firstname']))
+            print("Btw, your 'consumerKey' is '{0}'".format(validation['consumerKey']))
+
+    asyncio.run(main())
 
 
 Returned ``consumerKey`` should then be kept to avoid re-authenticating your
@@ -154,7 +172,7 @@ end-user on each use.
 .. code:: python
 
     # Allow all GET, POST, PUT, DELETE on /* (full API)
-    ck.add_recursive_rules(ovh.API_READ_WRITE, '/')
+    ck.add_recursive_rules(asyncovh.API_READ_WRITE, '/')
 
 Install a new mail redirection
 ------------------------------
@@ -171,24 +189,34 @@ is only supported with reserved keywords.
 
 .. code:: python
 
-    # -*- encoding: utf-8 -*-
+    #!/usr/bin/env python3
+    # -*- coding: utf-8 -*-
 
-    import ovh
+    import asyncio
+    import asyncovh
 
     DOMAIN = "example.com"
     SOURCE = "sales@example.com"
     DESTINATION = "contact@example.com"
 
-    # create a client
-    client = ovh.Client()
+    async def main():
+        # create a client
+        client = asyncovh.Client()
 
-    # Create a new alias
-    client.post('/email/domain/%s/redirection' % DOMAIN,
-            _from=SOURCE,
-            to=DESTINATION,
-            localCopy=False
-        )
-    print "Installed new mail redirection from %s to %s" % (SOURCE, DESTINATION)
+        # finish configuration (it may read files)
+        await client.init(config_file=None)
+
+        async with client._session:
+            # Create a new alias
+            await client.post("/email/domain/{0}/redirection".format(DOMAIN),
+                    _from=SOURCE,
+                    to=DESTINATION,
+                    localCopy=False
+                )
+
+        print("Installed new mail redirection from {0} to {1}".format(SOURCE, DESTINATION))
+
+    asyncio.run(main())
 
 Grab bill list
 --------------
@@ -202,23 +230,34 @@ This example assumes an existing Configuration_ with valid ``application_key``,
 
 .. code:: python
 
-    # -*- encoding: utf-8 -*-
+    #!/usr/bin/env python3
+    # -*- coding: utf-8 -*-
 
-    import ovh
+    import asyncio
+    import asyncovh
 
-    # create a client
-    client = ovh.Client()
+    async def main():
+        # create a client
+        client = asyncovh.Client()
 
-    # Grab bill list
-    bills = client.get('/me/bill')
-    for bill in bills:
-        details = client.get('/me/bill/%s' % bill)
-        print "%12s (%s): %10s --> %s" % (
-            bill,
-            details['date'],
-            details['priceWithTax']['text'],
-            details['pdfUrl'],
-        )
+        # finish configuration (it may read files)
+        await client.init(config_file=None)
+
+        async with client._session:
+            # Grab bill list
+            bills = await client.get("/me/bill")
+
+            for bill in bills:
+                details = await client.get("/me/bill/{0}".format(bill))
+
+                print("{0:12} ({1}): {2:10} --> {3}".format(
+                    bill,
+                    details['date'],
+                    details['priceWithTax']['text'],
+                    details['pdfUrl'],
+                ))
+
+    asyncio.run(main())
 
 Enable network burst in SBG1
 ----------------------------
@@ -232,23 +271,32 @@ This example assumes an existing Configuration_ with valid ``application_key``,
 
 .. code:: python
 
-    # -*- encoding: utf-8 -*-
+    #!/usr/bin/env python3
+    # -*- coding: utf-8 -*-
 
-    import ovh
+    import asyncio
+    import asyncovh
 
-    # create a client
-    client = ovh.Client()
+    async def main():
+        # create a client
+        client = asyncovh.Client()
 
-    # get list of all server names
-    servers = client.get('/dedicated/server/')
+        # finish configuration (it may read files)
+        await client.init(config_file=None)
 
-    # find all servers in SBG-1 datacenter
-    for server in servers:
-        details = client.get('/dedicated/server/%s' % server)
-        if details['datacenter'] == 'sbg1':
-            # enable burst on server
-            client.put('/dedicated/server/%s/burst' % server, status='active')
-            print "Enabled burst for %s server located in SBG-1" % server
+        async with client._session:
+            # get list of all server names
+            servers = await client.get("/dedicated/server/")
+
+            # find all servers in SBG-1 datacenter
+            for server in servers:
+                details = await client.get("/dedicated/server/{0}".format(server))
+                if details[u"datacenter"] == u"sbg1":
+                    # enable burst on server
+                    client.put("/dedicated/server/{0}/burst".format(server), status='active')
+                    print("Enabled burst for {0} server located in SBG-1".format(server))
+
+    asyncio.run(main())
 
 List application authorized to access your account
 --------------------------------------------------
@@ -263,33 +311,43 @@ This example assumes an existing Configuration_ with valid ``application_key``,
 
 .. code:: python
 
-    # -*- encoding: utf-8 -*-
+    #!/usr/bin/env python3
+    # -*- coding: utf-8 -*-
 
-    import ovh
+    import asyncio
+    import asyncovh
     from tabulate import tabulate
 
-    # create a client
-    client = ovh.Client()
+    async def main():
+        # create a client
+        client = asyncovh.Client()
 
-    credentials = client.get('/me/api/credential', status='validated')
+        # finish configuration (it may read files)
+        await client.init(config_file=None)
 
-    # pretty print credentials status
-    table = []
-    for credential_id in credentials:
-        credential_method = '/me/api/credential/'+str(credential_id)
-        credential = client.get(credential_method)
-        application = client.get(credential_method+'/application')
+        async with client._session:
+            credentials = await client.get("/me/api/credential", status="validated")
 
-        table.append([
-            credential_id,
-            '[%s] %s' % (application['status'], application['name']),
-            application['description'],
-            credential['creation'],
-            credential['expiration'],
-            credential['lastUse'],
-        ])
-    print tabulate(table, headers=['ID', 'App Name', 'Description',
-                                   'Token Creation', 'Token Expiration', 'Token Last Use'])
+            # pretty print credentials status
+            table = []
+            for credential_id in credentials:
+                credential_method = "/me/api/credential/{0}".format(credential_id)
+                credential = await client.get(credential_method)
+                application_method = "/me/api/credential/{0}/application".format(credential_id)
+                application = await client.get(application_method)
+
+                table.append([
+                    credential_id,
+                    "[{0}] {1}".format(application['status'], application['name']),
+                    application['description'],
+                    credential['creation'],
+                    credential['expiration'],
+                    credential['lastUse'],
+                ])
+            print tabulate(table, headers=['ID', 'App Name', 'Description',
+                                           'Token Creation', 'Token Expiration', 'Token Last Use'])
+
+    asyncio.run(main())
 
 Before running this example, make sure you have the
 `tabulate <https://pypi.python.org/pypi/tabulate>`_ library installed. It's a
@@ -310,45 +368,59 @@ fully installed on the machine and a consumer key allowed on the server exists.
 
 .. code:: python
 
-    # -*- encoding: utf-8 -*-
-    import ovh
+    #!/usr/bin/env python3
+    # -*- coding: utf-8 -*-
+
+    import asyncio
+    import asyncovh
     import sys
-    import time
     import tempfile
     import subprocess
 
-    # check arguments
-    if len(sys.argv) != 3:
-        print "Usage: %s SERVER_NAME ALLOWED_IP_V4" % sys.argv[0]
-        sys.exit(1)
+    TYPE="kvmipJnlp"
 
-    server_name = sys.argv[1]
-    allowed_ip = sys.argv[2]
+    async def main():
+        # check arguments
+        if len(sys.argv) != 3:
+            print "Usage: %s SERVER_NAME ALLOWED_IP_V4" % sys.argv[0]
+            sys.exit(1)
 
-    # create a client
-    client = ovh.Client()
+        server_name = sys.argv[1]
+        allowed_ip = sys.argv[2]
 
-    # create a KVM
-    client.post('/dedicated/server/'+server_name+'/features/ipmi/access', ipToAllow=allowed_ip, ttl=15, type="kvmipJnlp")
+        # create a client
+        client = asyncovh.Client()
 
-    # open the KVM, when ready
-    while True:
-        try:
-            # use a named temfile and feed it to java web start
-            with tempfile.NamedTemporaryFile() as f:
-                f.write(client.get('/dedicated/server/ns6457228.ip-178-33-61.eu/features/ipmi/access?type=kvmipJnlp')['value'])
-                f.flush()
-                subprocess.call(["javaws", f.name])
-            break
-        except:
-            time.sleep(1)
+        # finish configuration (it may read files)
+        await client.init(config_file=None)
+
+        async with client._session:
+            # create a KVM
+            method = "/dedicated/server/{0}/features/ipmi/access".format(server_name)
+            await client.post(method, ipToAllow=allowed_ip, ttl=15, type=TYPE)
+
+            # open the KVM, when ready
+            while True:
+                try:
+                    # use a named temfile and feed it to java web start
+                    with tempfile.NamedTemporaryFile() as f:
+                        method = "/dedicated/server/{0}/features/ipmi/access?type={1}".format(server_name, TYPE)
+                        kvm_data = await client.get(method)
+                        f.write(['value'])
+                        f.flush()
+                        subprocess.call(["javaws", f.name])
+                    break
+                except:
+                    asyncio.sleep(1)
+
+    asyncio.run(main())
 
 Running is only a simple command line:
 
 .. code:: bash
 
     # Basic
-    python open_kvm.py ns1234567.ip-178-42-42.eu $(curl ifconfig.ovh)
+    python3 open_kvm.py ns1234567.ip-178-42-42.eu $(curl ifconfig.ovh)
 
     # Use a specific consumer key
     OVH_CONSUMER_KEY=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA python open_kvm.py ns6457228.ip-178-33-61.eu $(curl -s ifconfig.ovh)
@@ -372,12 +444,14 @@ Example usage:
 
 .. code:: python
 
-    client = ovh.Client(
+    client = asyncovh.Client(
         endpoint='ovh-eu',
         application_key='<application key>',
         application_secret='<application secret>',
         consumer_key='<consumer key>',
     )
+
+    await client.init(config_file=None)
 
 Environment vars and predefined configuration files
 ---------------------------------------------------
@@ -407,7 +481,8 @@ The client will successively attempt to locate this configuration file in
 
 1. Current working directory: ``./ovh.conf``
 2. Current user's home directory ``~/.ovh.conf``
-3. System wide configuration ``/etc/ovh.conf``
+3. Current user's home directory ``~/.ovhrc``
+4. System wide configuration ``/etc/ovh.conf``
 
 This lookup mechanism makes it easy to overload credentials for a specific
 project or user.
@@ -416,7 +491,7 @@ Example usage:
 
 .. code:: python
 
-    client = ovh.Client()
+    client = asyncovh.Client()
 
 Custom configuration file
 -------------------------
@@ -427,7 +502,8 @@ Example usage:
 
 .. code:: python
 
-    client = ovh.Client(config_file='/my/config.conf')
+    client = asyncovh.Client()
+    await client.init(config_file='/my/config.conf')
 
 
 Passing parameters
@@ -443,19 +519,28 @@ With characters invalid in python argument name like a dot, you can:
 
 .. code:: python
 
-    # -*- encoding: utf-8 -*-
+    #!/usr/bin/env python3
+    # -*- coding: utf-8 -*-
 
-    import ovh
+    import asyncio
+    import asyncovh
 
-    params = {}
-    params['date.from'] = '2014-01-01'
-    params['date.to'] = '2015-01-01'
+    async def main():
+        params = {}
+        params["date.from"] = "2014-01-01"
+        params["date.to"] = "2015-01-01"
 
-    # create a client
-    client = ovh.Client()
+        # create a client
+        client = asyncovh.Client()
 
-    # pass parameters using **
-    client.post('/me/bills', **params)
+        # finish configuration (it may read files)
+        await client.init(config_file=None)
+
+        # pass parameters using **
+        async with client._session:
+            await client.post("/me/bills", **params)
+
+    asyncio.run(main())
 
 Advanced usage
 ==============
@@ -464,7 +549,7 @@ Un-authenticated calls
 ----------------------
 
 If the user has not authenticated yet (ie, there is no valid Consumer Key), you
-may force ``python-ovh`` to issue the call by passing ``_need_auth=True`` to
+may force ``python-asyncovh`` to issue the call by passing ``_need_auth=True`` to
 the high level ``get()``, ``post()``, ``put()`` and ``delete()`` helpers or
 ``need_auth=True`` to the low level method ``Client.call()`` and
 ``Client.raw_call()``.
@@ -482,7 +567,7 @@ case of error.
 
 In some rare scenario, advanced setups, you may need to perform customer
 processing on the raw request response. It may be accessed via ``raw_call()``.
-This is the lowest level call in ``python-ovh``. See the source for more
+This is the lowest level call in ``python-asyncovh``. See the source for more
 information.
 
 Hacking
@@ -497,8 +582,8 @@ Get the sources
 
 .. code:: bash
 
-    git clone https://github.com/ovh/python-ovh.git
-    cd python-ovh
+    git clone https://github.com/djoproject/python-asyncovh.git
+    cd python-asyncovh
     python setup.py develop
 
 You've developed a new cool feature ? Fixed an annoying bug ? We'd be happy
@@ -525,7 +610,7 @@ build HTML documentation:
 
 .. code:: bash
 
-    cd python-ovh/docs
+    cd python-asyncovh/docs
     make html
 
 Supported APIs
@@ -596,9 +681,9 @@ Kimsufi North America
 Related links
 =============
 
-- **Contribute**: https://github.com/ovh/python-ovh
-- **Report bugs**: https://github.com/ovh/python-ovh/issues
-- **Download**: http://pypi.python.org/pypi/ovh
+- **Contribute**: https://github.com/djoproject/python-asyncovh
+- **Report bugs**: https://github.com/djoproject/python-asyncovh/issues
+- **Original project**: https://github.com/ovh/python-ovh
 
 License
 =======

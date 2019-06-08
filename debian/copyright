@@ -1,6 +1,6 @@
 Format: http://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
-Upstream-Name: python-ovh
-Source: https://github.com/ovh/python-ovh
+Upstream-Name: python-asyncovh
+Source: https://github.com/djoproject/python-asyncovh
 
 Files: *
 Copyright: 2013-2018 OVH SAS
