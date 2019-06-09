@@ -334,7 +334,7 @@ class Client(object):
 
         return urlencode(arguments)
 
-    async def get(self, _target, _need_auth=True, **kwargs):
+    async def get(self, _target, _need_auth=True, _batch=None, **kwargs):
         """
         'GET' :py:func:`Client.call` wrapper.
 
@@ -354,7 +354,7 @@ class Client(object):
             else:
                 _target = '%s?%s' % (_target, query_string)
 
-        return await self.call('GET', _target, None, _need_auth)
+        return await self.call('GET', _target, None, _need_auth, _batch)
 
     async def put(self, _target, _need_auth=True, **kwargs):
         """
@@ -398,7 +398,7 @@ class Client(object):
 
     ## low level helpers
 
-    async def call(self, method, path, data=None, need_auth=True):
+    async def call(self, method, path, data=None, need_auth=True, batch=None):
         """
         Low level call helper. If ``consumer_key`` is not ``None``, inject
         authentication headers and sign the request.
@@ -420,7 +420,7 @@ class Client(object):
         """
         # attempt request
         try:
-            result = await self.raw_call(method=method, path=path, data=data, need_auth=need_auth)
+            result = await self.raw_call(method=method, path=path, data=data, need_auth=need_auth, batch=batch)
         except ClientError as error:
             raise HTTPError("Low HTTP request failed error", error)
 
@@ -465,7 +465,7 @@ class Client(object):
         else:
             raise APIError(json_result.get('message'), response=result)
 
-    async def raw_call(self, method, path, data=None, need_auth=True):
+    async def raw_call(self, method, path, data=None, need_auth=True, batch=None):
         """
         Lowest level call helper. If ``consumer_key`` is not ``None``, inject
         authentication headers and sign the request.
@@ -491,6 +491,9 @@ class Client(object):
 
         if self._application_key is not None:
             headers['X-Ovh-Application'] = self._application_key
+
+        if batch is not None:
+            headers['X-Ovh-Batch'] = batch
 
         # include payload
         if data is not None:

@@ -61,6 +61,7 @@ FAKE_TIME = 1404395889.467238
 
 FAKE_METHOD = 'MeThOd'
 FAKE_PATH = '/unit/test'
+FAKE_PATH_BATCH = '/unit/test/1,2'
 
 TIMEOUT = 180
 
@@ -138,7 +139,7 @@ class testClient(unittest.TestCase):
 
         # nominal
         time_delta = _run(api.get_time_delta())
-        m_call.assert_called_once_with('GET', '/auth/time', None, False)
+        m_call.assert_called_once_with('GET', '/auth/time', None, False, None)
         self.assertEqual(time_delta, 6)
         self.assertEqual(api._time_delta, 6)
 
@@ -189,28 +190,28 @@ class testClient(unittest.TestCase):
         api = Client(ENDPOINT, APPLICATION_KEY, APPLICATION_SECRET, CONSUMER_KEY)
         _run(api.init())
         self.assertEqual(m_call.return_value, _run(api.get(FAKE_URL)))
-        m_call.assert_called_once_with('GET', FAKE_URL, None, True)
+        m_call.assert_called_once_with('GET', FAKE_URL, None, True, None)
 
         # append query string
         m_call.reset_mock()
         api = Client(ENDPOINT, APPLICATION_KEY, APPLICATION_SECRET, CONSUMER_KEY)
         _run(api.init())
         self.assertEqual(m_call.return_value, _run(api.get(FAKE_URL, param="test")))
-        m_call.assert_called_once_with('GET', FAKE_URL+'?param=test', None, True)
+        m_call.assert_called_once_with('GET', FAKE_URL+'?param=test', None, True, None)
 
         # append to existing query string
         m_call.reset_mock()
         api = Client(ENDPOINT, APPLICATION_KEY, APPLICATION_SECRET, CONSUMER_KEY)
         _run(api.init())
         self.assertEqual(m_call.return_value, _run(api.get(FAKE_URL+'?query=string', param="test")))
-        m_call.assert_called_once_with('GET', FAKE_URL+'?query=string&param=test', None, True)
+        m_call.assert_called_once_with('GET', FAKE_URL+'?query=string&param=test', None, True, None)
 
         # boolean arguments
         m_call.reset_mock()
         api = Client(ENDPOINT, APPLICATION_KEY, APPLICATION_SECRET, CONSUMER_KEY)
         _run(api.init())
         self.assertEqual(m_call.return_value, _run(api.get(FAKE_URL+'?query=string', checkbox=True)))
-        m_call.assert_called_once_with('GET', FAKE_URL+'?query=string&checkbox=true', None, True)
+        m_call.assert_called_once_with('GET', FAKE_URL+'?query=string&checkbox=true', None, True, None)
 
         # keyword calling convention
         m_call.reset_mock()
@@ -218,10 +219,16 @@ class testClient(unittest.TestCase):
         _run(api.init())
         self.assertEqual(m_call.return_value, _run(api.get(FAKE_URL, _from="start", to="end")))
         try:
-            m_call.assert_called_once_with('GET', FAKE_URL+'?to=end&from=start', None, True)
+            m_call.assert_called_once_with('GET', FAKE_URL+'?to=end&from=start', None, True, None)
         except:
-            m_call.assert_called_once_with('GET', FAKE_URL+'?from=start&to=end', None, True)
+            m_call.assert_called_once_with('GET', FAKE_URL+'?from=start&to=end', None, True, None)
 
+        # batch call
+        m_call.reset_mock()
+        api = Client(ENDPOINT, APPLICATION_KEY, APPLICATION_SECRET, CONSUMER_KEY)
+        _run(api.init())
+        self.assertEqual(m_call.return_value, _run(api.get(FAKE_URL, _batch=',')))
+        m_call.assert_called_once_with('GET', FAKE_URL, None, True, ',')
 
     @mock.patch.object(Client, 'call', new_callable=AsyncMock)
     def test_delete(self, m_call):
@@ -426,6 +433,13 @@ class testClient(unittest.TestCase):
         _run(api.init())
         r = _run(api.raw_call(FAKE_METHOD, FAKE_PATH, None, False))
         self.assertEqual(r, "Let's assume requests will return this")
+
+    @mock.patch('asyncovh.client.ClientSession.request', new_callable=AsyncMock, return_value=["first item", "second item"])
+    def test_raw_call_batch(self, m_req):
+        api = Client(ENDPOINT, APPLICATION_KEY, APPLICATION_SECRET)
+        _run(api.init())
+        r = _run(api.raw_call(FAKE_METHOD, FAKE_PATH_BATCH, None, False, ','))
+        self.assertEqual(r, ["first item", "second item"])
 
     # Perform real API tests.
     def test_endpoints(self):
