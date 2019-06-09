@@ -26,15 +26,34 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-import unittest
+import asyncio
 import mock
+import unittest
+
+from uuid import uuid4
+
+
+def _run(coro):
+    return asyncio.run(coro)
+
+
+class AsyncMock(mock.Mock):
+    def __call__(self, *args, **kwargs):
+        sup = super(AsyncMock, self)
+        async def coro():
+            return sup.__call__(*args, **kwargs)
+        return coro()
+
+    def __await__(self):
+        return self().__await__()
+
 
 class testConsumerKeyRequest(unittest.TestCase):
     def test_add_rules(self):
         # Prepare
-        import ovh
-        m_client = mock.Mock()
-        ck = ovh.ConsumerKeyRequest(m_client)
+        import asyncovh
+        m_client = AsyncMock()
+        ck = asyncovh.ConsumerKeyRequest(m_client)
 
         # Test: No-op
         self.assertEqual([], ck._access_rules)
@@ -48,7 +67,7 @@ class testConsumerKeyRequest(unittest.TestCase):
         ck._access_rules = []
 
         # Test: allow safe methods on domain
-        ck.add_rules(ovh.API_READ_WRITE_SAFE, '/domains/test.com')
+        ck.add_rules(asyncovh.API_READ_WRITE_SAFE, '/domains/test.com')
         self.assertEqual([
             {'method': 'GET',  'path': '/domains/test.com'},
             {'method': 'POST', 'path': '/domains/test.com'},
@@ -57,7 +76,7 @@ class testConsumerKeyRequest(unittest.TestCase):
         ck._access_rules = []
 
         # Test: allow all sms, strips suffix
-        ck.add_recursive_rules(ovh.API_READ_WRITE, '/sms/*')
+        ck.add_recursive_rules(asyncovh.API_READ_WRITE, '/sms/*')
         self.assertEqual([
             {'method': 'GET',    'path': '/sms'},
             {'method': 'POST',   'path': '/sms'},
@@ -72,7 +91,7 @@ class testConsumerKeyRequest(unittest.TestCase):
         ck._access_rules = []
 
         # Test: allow all, does not insert the empty rule
-        ck.add_recursive_rules(ovh.API_READ_WRITE, '/')
+        ck.add_recursive_rules(asyncovh.API_READ_WRITE, '/')
         self.assertEqual([
             {'method': 'GET',    'path': '/*'},
             {'method': 'POST',   'path': '/*'},
@@ -82,7 +101,6 @@ class testConsumerKeyRequest(unittest.TestCase):
         ck._access_rules = []
 
         # Test launch request
-        ck.add_recursive_rules(ovh.API_READ_WRITE, '/')
-        self.assertEqual(m_client.request_consumerkey.return_value, ck.request())
+        ck.add_recursive_rules(asyncovh.API_READ_WRITE, '/')
+        self.assertEqual(m_client.request_consumerkey.return_value, _run(ck.request()))
         m_client.request_consumerkey.assert_called_once_with(ck._access_rules, None)
-

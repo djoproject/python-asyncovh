@@ -13,7 +13,7 @@ credential creation and requests signing.
 .. image:: https://travis-ci.org/ovh/python-ovh.svg?branch=master
            :alt: Build Status
            :target: https://github.com/djoproject/python-asyncovh
-.. image:: https://coveralls.io/repos/github/ovh/python-ovh/badge.svg
+.. image:: https://img.shields.io/badge/coverage-100%25-green.svg
            :alt: Coverage Status
            :target: https://github.com/djoproject/python-asyncovh
 .. image:: https://img.shields.io/badge/asyncio-yes-blueviolet.svg
@@ -58,7 +58,7 @@ you may get latest development version directly from Git.
 
 .. code:: bash
 
-    pip install -e git+https://github.com/djoproject/python-asyncovh.git#egg=ovh
+    pip install -e git+https://github.com/djoproject/python-asyncovh.git#egg=asyncovh
 
 Example Usage
 =============
@@ -689,3 +689,9 @@ License
 =======
 
 3-Clause BSD
+
+Personal notes
+=======
+
+- a modern unittest framework is needed
+- a code quality check is needed

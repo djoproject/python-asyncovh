@@ -26,7 +26,8 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-from ovh import config
+import asyncio
+from asyncovh import config
 import unittest
 import mock
 import os
@@ -46,6 +47,11 @@ M_ENVIRON = {
     'OVH_CONSUMER_KEY': 'consumer key from from environ',
 }
 
+
+def _run(coro):
+    return asyncio.run(coro)
+
+
 class testConfig(unittest.TestCase):
     def setUp(self):
         """Overload configuration lookup path"""
@@ -63,6 +69,7 @@ class testConfig(unittest.TestCase):
         self.assertEqual([
            '/etc/ovh.conf',
            home+'/.ovh.conf',
+           home+'/.ovhrc',
            pwd+'/tests/ovh.conf',
 
         ], self._orig_CONFIG_PATH)
@@ -95,7 +102,7 @@ class testConfig(unittest.TestCase):
 
     def test_config_get_custom_conf(self):
         conf = config.ConfigurationManager()
-        conf.read(M_CUSTOM_CONFIG_PATH)
+        _run(conf.read(M_CUSTOM_CONFIG_PATH))
 
         self.assertEqual('ovh-ca', conf.get('default', 'endpoint'))
         self.assertEqual('This is a fake custom application key',   conf.get('ovh-ca', 'application_key'))

@@ -42,7 +42,7 @@ class APIError(Exception):
 
     def __str__(self):
         if self.query_id:
-            return "{} \nOVH-Query-ID: {}".format(super(APIError, self).__str__(), self.query_id)
+            return "{0} \nOVH-Query-ID: {1}".format(super(APIError, self).__str__(), self.query_id)
         else:
             return super(APIError, self).__str__()
 

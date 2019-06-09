@@ -26,15 +26,15 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import asyncio
+from aiohttp import ClientError
 import unittest
 import mock
 import json
 from collections import OrderedDict
 
-from ovh.vendor import requests
-
-from ovh.client import Client, ENDPOINTS
-from ovh.exceptions import (
+from asyncovh.client import Client, ENDPOINTS
+from asyncovh.exceptions import (
     APIError, NetworkError, InvalidResponse, InvalidRegion, ReadOnlyError,
     ResourceNotFoundError, BadParametersError, ResourceConflictError, HTTPError,
     InvalidKey, InvalidCredential, NotGrantedCall, NotCredential, Forbidden,
@@ -64,6 +64,21 @@ FAKE_PATH = '/unit/test'
 
 TIMEOUT = 180
 
+def _run(coro):
+    return asyncio.run(coro)
+
+
+class AsyncMock(mock.Mock):
+    def __call__(self, *args, **kwargs):
+        sup = super(AsyncMock, self)
+        async def coro():
+            return sup.__call__(*args, **kwargs)
+        return coro()
+
+    def __await__(self):
+        return self().__await__()
+
+
 class testClient(unittest.TestCase):
     def setUp(self):
         self.time_patch = mock.patch('time.time', return_value=FAKE_TIME)
@@ -77,6 +92,7 @@ class testClient(unittest.TestCase):
     def test_init(self):
         # nominal
         api = Client(ENDPOINT, APPLICATION_KEY, APPLICATION_SECRET, CONSUMER_KEY)
+        _run(api.init())
         self.assertEqual(APPLICATION_KEY, api._application_key)
         self.assertEqual(APPLICATION_SECRET, api._application_secret)
         self.assertEqual(CONSUMER_KEY, api._consumer_key)
@@ -90,11 +106,13 @@ class testClient(unittest.TestCase):
         self.assertEqual(timeout, api._timeout)
 
         # invalid region
-        self.assertRaises(InvalidRegion, Client, ENDPOINT_BAD, '', '', '')
+        api = Client(ENDPOINT_BAD, '', '', '')
+        self.assertRaises(InvalidRegion, _run, api.init())
 
     def test_init_from_config(self):
         with mock.patch.dict('os.environ', M_ENVIRON):
             api = Client()
+            _run(api.init())
 
         self.assertEqual('https://ca.api.soyoustart.com/1.0',      api._endpoint)
         self.assertEqual(M_ENVIRON['OVH_APPLICATION_KEY'],    api._application_key)
@@ -103,21 +121,23 @@ class testClient(unittest.TestCase):
 
     def test_init_from_custom_config(self):
         # custom config file
-        api = Client(config_file=M_CUSTOM_CONFIG_PATH)
+        api = Client()
+        _run(api.init(config_file=M_CUSTOM_CONFIG_PATH))
 
         self.assertEqual('https://ca.api.ovh.com/1.0', api._endpoint)
         self.assertEqual('This is a fake custom application key', api._application_key)
         self.assertEqual('This is a *real* custom application key', api._application_secret)
         self.assertEqual('I am customingly kidding', api._consumer_key)
 
-    @mock.patch.object(Client, 'call')
+    @mock.patch.object(Client, 'call', new_callable=AsyncMock)
     def test_time_delta(self, m_call):
         api = Client(ENDPOINT, APPLICATION_KEY, APPLICATION_SECRET, CONSUMER_KEY)
+        _run(api.init())
         m_call.return_value = 1404395895
         api._time_delta = None
 
         # nominal
-        time_delta = api.time_delta
+        time_delta = _run(api.get_time_delta())
         m_call.assert_called_once_with('GET', '/auth/time', None, False)
         self.assertEqual(time_delta, 6)
         self.assertEqual(api._time_delta, 6)
@@ -125,12 +145,13 @@ class testClient(unittest.TestCase):
         # ensure cache
         m_call.return_value = 0
         m_call.reset_mock()
-        self.assertEqual(api.time_delta, 6)
+        self.assertEqual(_run(api.get_time_delta()), 6)
         self.assertFalse(m_call.called)
 
-    @mock.patch.object(Client, 'call')
+    @mock.patch.object(Client, 'call', new_callable=AsyncMock)
     def test_request_consumerkey(self, m_call):
         api = Client(ENDPOINT, APPLICATION_KEY, APPLICATION_SECRET, CONSUMER_KEY)
+        _run(api.init())
 
         # nominal
         FAKE_RULES = object()
@@ -138,7 +159,7 @@ class testClient(unittest.TestCase):
         RET = {'consumerKey': FAKE_CK}
         m_call.return_value = RET
 
-        ret = api.request_consumerkey(FAKE_RULES, FAKE_URL)
+        ret = _run(api.request_consumerkey(FAKE_RULES, FAKE_URL))
 
         self.assertEqual(RET, ret)
         m_call.assert_called_once_with('POST', '/auth/credential', {
@@ -148,7 +169,7 @@ class testClient(unittest.TestCase):
 
     def test_new_consumer_key_request(self):
         api = Client(ENDPOINT, APPLICATION_KEY, APPLICATION_SECRET, CONSUMER_KEY)
-
+        _run(api.init())
         ck = api.new_consumer_key_request()
         self.assertEqual(ck._client, api)
 
@@ -156,54 +177,60 @@ class testClient(unittest.TestCase):
 
     def test__canonicalize_kwargs(self):
         api = Client(ENDPOINT, APPLICATION_KEY, APPLICATION_SECRET, CONSUMER_KEY)
-
+        _run(api.init())
         self.assertEqual({}, api._canonicalize_kwargs({}))
         self.assertEqual({'from': 'value'}, api._canonicalize_kwargs({'from': 'value'}))
         self.assertEqual({'_to': 'value'}, api._canonicalize_kwargs({'_to': 'value'}))
         self.assertEqual({'from': 'value'}, api._canonicalize_kwargs({'_from': 'value'}))
 
-    @mock.patch.object(Client, 'call')
+    @mock.patch.object(Client, 'call', new_callable=AsyncMock)
     def test_get(self, m_call):
         # basic test
         api = Client(ENDPOINT, APPLICATION_KEY, APPLICATION_SECRET, CONSUMER_KEY)
-        self.assertEqual(m_call.return_value, api.get(FAKE_URL))
+        _run(api.init())
+        self.assertEqual(m_call.return_value, _run(api.get(FAKE_URL)))
         m_call.assert_called_once_with('GET', FAKE_URL, None, True)
 
         # append query string
         m_call.reset_mock()
         api = Client(ENDPOINT, APPLICATION_KEY, APPLICATION_SECRET, CONSUMER_KEY)
-        self.assertEqual(m_call.return_value, api.get(FAKE_URL, param="test"))
+        _run(api.init())
+        self.assertEqual(m_call.return_value, _run(api.get(FAKE_URL, param="test")))
         m_call.assert_called_once_with('GET', FAKE_URL+'?param=test', None, True)
 
         # append to existing query string
         m_call.reset_mock()
         api = Client(ENDPOINT, APPLICATION_KEY, APPLICATION_SECRET, CONSUMER_KEY)
-        self.assertEqual(m_call.return_value, api.get(FAKE_URL+'?query=string', param="test"))
+        _run(api.init())
+        self.assertEqual(m_call.return_value, _run(api.get(FAKE_URL+'?query=string', param="test")))
         m_call.assert_called_once_with('GET', FAKE_URL+'?query=string&param=test', None, True)
 
         # boolean arguments
         m_call.reset_mock()
         api = Client(ENDPOINT, APPLICATION_KEY, APPLICATION_SECRET, CONSUMER_KEY)
-        self.assertEqual(m_call.return_value, api.get(FAKE_URL+'?query=string', checkbox=True))
+        _run(api.init())
+        self.assertEqual(m_call.return_value, _run(api.get(FAKE_URL+'?query=string', checkbox=True)))
         m_call.assert_called_once_with('GET', FAKE_URL+'?query=string&checkbox=true', None, True)
 
         # keyword calling convention
         m_call.reset_mock()
         api = Client(ENDPOINT, APPLICATION_KEY, APPLICATION_SECRET, CONSUMER_KEY)
-        self.assertEqual(m_call.return_value, api.get(FAKE_URL, _from="start", to="end"))
+        _run(api.init())
+        self.assertEqual(m_call.return_value, _run(api.get(FAKE_URL, _from="start", to="end")))
         try:
             m_call.assert_called_once_with('GET', FAKE_URL+'?to=end&from=start', None, True)
         except:
             m_call.assert_called_once_with('GET', FAKE_URL+'?from=start&to=end', None, True)
 
 
-    @mock.patch.object(Client, 'call')
+    @mock.patch.object(Client, 'call', new_callable=AsyncMock)
     def test_delete(self, m_call):
         api = Client(ENDPOINT, APPLICATION_KEY, APPLICATION_SECRET, CONSUMER_KEY)
-        self.assertEqual(m_call.return_value, api.delete(FAKE_URL))
+        _run(api.init())
+        self.assertEqual(m_call.return_value, _run(api.delete(FAKE_URL)))
         m_call.assert_called_once_with('DELETE', FAKE_URL, None, True)
 
-    @mock.patch.object(Client, 'call')
+    @mock.patch.object(Client, 'call', new_callable=AsyncMock)
     def test_post(self, m_call):
         PAYLOAD = {
             'arg1': object(),
@@ -213,10 +240,11 @@ class testClient(unittest.TestCase):
         }
 
         api = Client(ENDPOINT, APPLICATION_KEY, APPLICATION_SECRET, CONSUMER_KEY)
-        self.assertEqual(m_call.return_value, api.post(FAKE_URL, **PAYLOAD))
+        _run(api.init())
+        self.assertEqual(m_call.return_value, _run(api.post(FAKE_URL, **PAYLOAD)))
         m_call.assert_called_once_with('POST', FAKE_URL, PAYLOAD, True)
 
-    @mock.patch.object(Client, 'call')
+    @mock.patch.object(Client, 'call', new_callable=AsyncMock)
     def test_put(self, m_call):
         PAYLOAD = {
             'arg1': object(),
@@ -226,21 +254,23 @@ class testClient(unittest.TestCase):
         }
 
         api = Client(ENDPOINT, APPLICATION_KEY, APPLICATION_SECRET, CONSUMER_KEY)
-        self.assertEqual(m_call.return_value, api.put(FAKE_URL, **PAYLOAD))
+        _run(api.init())
+        self.assertEqual(m_call.return_value, _run(api.put(FAKE_URL, **PAYLOAD)))
         m_call.assert_called_once_with('PUT', FAKE_URL, PAYLOAD, True)
 
     ## test core function
 
-    @mock.patch('ovh.client.Session.request')
+    @mock.patch('asyncovh.client.ClientSession.request', new_callable=AsyncMock)
     def test_call_no_sign(self, m_req):
         m_res = m_req.return_value
         m_json = m_res.json.return_value
 
         api = Client(ENDPOINT, APPLICATION_KEY, APPLICATION_SECRET)
+        _run(api.init())
 
         # nominal
-        m_res.status_code = 200
-        self.assertEqual(m_json, api.call(FAKE_METHOD, FAKE_PATH, None, False))
+        m_res.status = 200
+        self.assertEqual(m_json, _run(api.call(FAKE_METHOD, FAKE_PATH, None, False)))
         m_req.assert_called_once_with(
             FAKE_METHOD, BASE_URL+'/unit/test',
             headers={'X-Ovh-Application': APPLICATION_KEY}, data='',
@@ -249,10 +279,10 @@ class testClient(unittest.TestCase):
         m_req.reset_mock()
 
         # data, nominal
-        m_res.status_code = 200
+        m_res.status = 200
         data = {'key': 'value'}
         j_data = json.dumps(data)
-        self.assertEqual(m_json, api.call(FAKE_METHOD, FAKE_PATH, data, False))
+        self.assertEqual(m_json, _run(api.call(FAKE_METHOD, FAKE_PATH, data, False)))
         m_req.assert_called_once_with(
             FAKE_METHOD, BASE_URL+'/unit/test',
             headers={
@@ -263,76 +293,78 @@ class testClient(unittest.TestCase):
         m_req.reset_mock()
 
         # request fails, somehow
-        m_req.side_effect = requests.RequestException
-        self.assertRaises(HTTPError, api.call, FAKE_METHOD, FAKE_PATH, None, False)
+        m_req.side_effect = ClientError
+        self.assertRaises(HTTPError, _run, api.call(FAKE_METHOD, FAKE_PATH, None, False))
         m_req.side_effect = None
 
         # response decoding fails
         m_res.json.side_effect = ValueError
-        self.assertRaises(InvalidResponse, api.call, FAKE_METHOD, FAKE_PATH, None, False)
+        self.assertRaises(InvalidResponse, _run, api.call(FAKE_METHOD, FAKE_PATH, None, False))
         m_res.json.side_effect = None
 
         # HTTP errors
-        m_res.status_code = 404
-        self.assertRaises(ResourceNotFoundError, api.call, FAKE_METHOD, FAKE_PATH, None, False)
-        m_res.status_code = 403
+        m_res.status = 404
+        self.assertRaises(ResourceNotFoundError, _run, api.call(FAKE_METHOD, FAKE_PATH, None, False))
+        m_res.status = 403
         m_res.json.return_value = {'errorCode': "NOT_GRANTED_CALL"}
-        self.assertRaises(NotGrantedCall, api.call, FAKE_METHOD, FAKE_PATH, None, False)
-        m_res.status_code = 403
+        self.assertRaises(NotGrantedCall, _run, api.call(FAKE_METHOD, FAKE_PATH, None, False))
+        m_res.status = 403
         m_res.json.return_value = {'errorCode': "NOT_CREDENTIAL"}
-        self.assertRaises(NotCredential, api.call, FAKE_METHOD, FAKE_PATH, None, False)
-        m_res.status_code = 403
+        self.assertRaises(NotCredential, _run, api.call(FAKE_METHOD, FAKE_PATH, None, False))
+        m_res.status = 403
         m_res.json.return_value = {'errorCode': "INVALID_KEY"}
-        self.assertRaises(InvalidKey, api.call, FAKE_METHOD, FAKE_PATH, None, False)
-        m_res.status_code = 403
+        self.assertRaises(InvalidKey, _run, api.call(FAKE_METHOD, FAKE_PATH, None, False))
+        m_res.status = 403
         m_res.json.return_value = {'errorCode': "INVALID_CREDENTIAL"}
-        self.assertRaises(InvalidCredential, api.call, FAKE_METHOD, FAKE_PATH, None, False)
-        m_res.status_code = 403
+        self.assertRaises(InvalidCredential, _run, api.call(FAKE_METHOD, FAKE_PATH, None, False))
+        m_res.status = 403
         m_res.json.return_value = {'errorCode': "FORBIDDEN"}
-        self.assertRaises(Forbidden, api.call, FAKE_METHOD, FAKE_PATH, None, False)
-        m_res.status_code = 400
-        self.assertRaises(BadParametersError, api.call, FAKE_METHOD, FAKE_PATH, None, False)
-        m_res.status_code = 409
-        self.assertRaises(ResourceConflictError, api.call, FAKE_METHOD, FAKE_PATH, None, False)
-        m_res.status_code = 460
-        self.assertRaises(ResourceExpiredError, api.call, FAKE_METHOD, FAKE_PATH, None, False)
-        m_res.status_code = 0
-        self.assertRaises(NetworkError, api.call, FAKE_METHOD, FAKE_PATH, None, False)
-        m_res.status_code = 99
-        self.assertRaises(APIError, api.call, FAKE_METHOD, FAKE_PATH, None, False)
-        m_res.status_code = 306
-        self.assertRaises(APIError, api.call, FAKE_METHOD, FAKE_PATH, None, False)
+        self.assertRaises(Forbidden, _run, api.call(FAKE_METHOD, FAKE_PATH, None, False))
+        m_res.status = 400
+        self.assertRaises(BadParametersError, _run, api.call(FAKE_METHOD, FAKE_PATH, None, False))
+        m_res.status = 409
+        self.assertRaises(ResourceConflictError, _run, api.call(FAKE_METHOD, FAKE_PATH, None, False))
+        m_res.status = 460
+        self.assertRaises(ResourceExpiredError, _run, api.call(FAKE_METHOD, FAKE_PATH, None, False))
+        m_res.status = 0
+        self.assertRaises(NetworkError, _run, api.call(FAKE_METHOD, FAKE_PATH, None, False))
+        m_res.status = 99
+        self.assertRaises(APIError, _run, api.call(FAKE_METHOD, FAKE_PATH, None, False))
+        m_res.status = 306
+        self.assertRaises(APIError, _run, api.call(FAKE_METHOD, FAKE_PATH, None, False))
 
 
-    @mock.patch('ovh.client.Session.request')
+    @mock.patch('asyncovh.client.ClientSession.request', new_callable=AsyncMock)
     def test_call_query_id(self, m_req):
         m_res = m_req.return_value
         m_json = m_res.json.return_value
         m_res.headers = {"X-OVH-QUERYID": "FR.test1"}
 
         api = Client(ENDPOINT, APPLICATION_KEY, APPLICATION_SECRET)
+        _run(api.init())
 
-        m_res.status_code = 99
-        self.assertRaises(APIError, api.call, FAKE_METHOD, FAKE_PATH, None, False)
+        m_res.status = 99
+        self.assertRaises(APIError, _run, api.call(FAKE_METHOD, FAKE_PATH, None, False))
         try:
-            api.call(FAKE_METHOD, FAKE_PATH, None, False)
+            _run(api.call(FAKE_METHOD, FAKE_PATH, None, False))
             self.assertEqual(0, 1)   # should fail as method have to raise APIError
         except APIError as e:
             self.assertEqual(e.query_id, "FR.test1")
 
 
-    @mock.patch('ovh.client.Session.request')
-    @mock.patch('ovh.client.Client.time_delta', new_callable=mock.PropertyMock)
+    @mock.patch('asyncovh.client.ClientSession.request', new_callable=AsyncMock)
+    @mock.patch.object(Client, 'get_time_delta', new_callable=AsyncMock)
     def test_call_signature(self, m_time_delta, m_req):
         m_res = m_req.return_value
         m_json = m_res.json.return_value
         m_time_delta.return_value = 42
 
         api = Client(ENDPOINT, APPLICATION_KEY, APPLICATION_SECRET, CONSUMER_KEY)
+        _run(api.init())
 
         # nominal
-        m_res.status_code = 200
-        self.assertEqual(m_json, api.call(FAKE_METHOD, FAKE_PATH, None, True))
+        m_res.status = 200
+        self.assertEqual(m_json, _run(api.call(FAKE_METHOD, FAKE_PATH, None, True)))
         m_time_delta.assert_called_once_with()
         m_req.assert_called_once_with(
             FAKE_METHOD, BASE_URL+'/unit/test',
@@ -349,8 +381,8 @@ class testClient(unittest.TestCase):
 
         # data, nominal
         data = OrderedDict([('some', 'random'), ('data', 42)])
-        m_res.status_code = 200
-        self.assertEqual(m_json, api.call(FAKE_METHOD, FAKE_PATH, data, True))
+        m_res.status = 200
+        self.assertEqual(m_json, _run(api.call(FAKE_METHOD, FAKE_PATH, data, True)))
         m_time_delta.assert_called_once_with()
         m_req.assert_called_once_with(
             FAKE_METHOD, BASE_URL+'/unit/test',
@@ -366,7 +398,7 @@ class testClient(unittest.TestCase):
         m_req.reset_mock()
 
         # Overwrite configuration to avoid interfering with any local config
-        from ovh.client import config
+        from asyncovh.client import config
         try:
             from ConfigParser import RawConfigParser
         except ImportError:
@@ -379,22 +411,31 @@ class testClient(unittest.TestCase):
         # errors
         try:
             api = Client(ENDPOINT, APPLICATION_KEY, None, CONSUMER_KEY)
-            self.assertRaises(InvalidKey, api.call, FAKE_METHOD, FAKE_PATH, None, True)
+            _run(api.init())
+            self.assertRaises(InvalidKey, _run, api.call(FAKE_METHOD, FAKE_PATH, None, True))
             api = Client(ENDPOINT, APPLICATION_KEY, APPLICATION_SECRET, None)
-            self.assertRaises(InvalidKey, api.call, FAKE_METHOD, FAKE_PATH, None, True)
+            _run(api.init())
+            self.assertRaises(InvalidKey, _run, api.call(FAKE_METHOD, FAKE_PATH, None, True))
         finally:
             # Restore configuration
             config.config = self._orig_config
 
-    @mock.patch('ovh.client.Session.request', return_value="Let's assume requests will return this")
+    @mock.patch('asyncovh.client.ClientSession.request', new_callable=AsyncMock, return_value="Let's assume requests will return this")
     def test_raw_call(self, m_req):
         api = Client(ENDPOINT, APPLICATION_KEY, APPLICATION_SECRET)
-        r = api.raw_call(FAKE_METHOD, FAKE_PATH, None, False)
+        _run(api.init())
+        r = _run(api.raw_call(FAKE_METHOD, FAKE_PATH, None, False))
         self.assertEqual(r, "Let's assume requests will return this")
 
     # Perform real API tests.
     def test_endpoints(self):
-        for endpoint in ENDPOINTS.keys():
-            auth_time = Client(endpoint).get('/auth/time', _need_auth=False)
-            self.assertTrue(auth_time > 0)
+        async def get_auth_time(endpoint):
+            api = Client(endpoint)
+            await api.init()
+            async with api._session:
+                return await api.get('/auth/time', _need_auth=False)
 
+        for endpoint in ENDPOINTS.keys():
+            print(endpoint)
+            auth_time = _run(get_auth_time(endpoint))
+            self.assertTrue(auth_time > 0)

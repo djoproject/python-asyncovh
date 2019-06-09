@@ -41,10 +41,16 @@ import json
 import keyword
 import time
 
+try:
+    from urllib import urlencode
+except ImportError: # pragma: no cover
+    # Python 3
+    from urllib.parse import urlencode
+
 import aiofiles
-import aiohttp
 
 from aiohttp import ClientSession
+from aiohttp import ClientError
 
 from .config import config
 from .consumer_key import ConsumerKeyRequest
@@ -146,11 +152,14 @@ class Client(object):
         self._time_delta = None
 
         # use a requests session to reuse HTTPS connections between requests
-        self._session = ClientSession()
+        self._session = None
 
         # Override default timeout
         self._timeout = timeout
 
+        self._application_key = None
+        self._application_secret = None
+        self._consumer_key = None
 
     async def init(self, config_file=None):
         # Load a custom config file if requested
@@ -184,6 +193,9 @@ class Client(object):
             self.consumer_key = config.get(endpoint, 'consumer_key')
 
         self._consumer_key = self.consumer_key
+
+        # use a requests session to reuse HTTPS connections between requests
+        self._session = ClientSession()
 
     ## high level API
 
@@ -409,7 +421,7 @@ class Client(object):
         # attempt request
         try:
             result = await self.raw_call(method=method, path=path, data=data, need_auth=need_auth)
-        except aiohttp.ClientError as error:
+        except ClientError as error:
             raise HTTPError("Low HTTP request failed error", error)
 
         status = result.status
@@ -475,9 +487,10 @@ class Client(object):
         """
         body = ''
         target = self._endpoint + path
-        headers = {
-            'X-Ovh-Application': self._application_key
-        }
+        headers = {}
+
+        if self._application_key is not None:
+            headers['X-Ovh-Application'] = self._application_key
 
         # include payload
         if data is not None:
@@ -510,6 +523,8 @@ class Client(object):
             headers['X-Ovh-Consumer'] = self._consumer_key
             headers['X-Ovh-Timestamp'] = now
             headers['X-Ovh-Signature'] = "$1$" + signature.hexdigest()
+
+
 
         return await self._session.request(method, target, headers=headers,
                                            data=body, timeout=self._timeout)
