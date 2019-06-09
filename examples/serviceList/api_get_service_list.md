@@ -12,7 +12,7 @@ This documentation will help you to list your services at ovh.
 The easiest way to get the latest stable release is to grab it from pypi using ```pip```.
 
 ```bash
-pip install tabulate ovh
+python3.7 -m pip install tabulate git+https://github.com/djoproject/python-asyncovh.git#egg=asyncovh
 ```
 
 ## Create a new token
@@ -44,7 +44,7 @@ If you need a more generic token, you may adjust the **Rights** fields at your n
 ## Run script
 
 ```bash
-python serviceList.py
+python3.7 serviceList.py
 ```
 
 For instance, using the example values in this script, the answer would look like:

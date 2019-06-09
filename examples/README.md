@@ -8,4 +8,4 @@ In this part, you can find real use cases for the OVH Python wrapper
 Following examples are related to cross services proposed by OVH.
 
  - [How to get the list of services expiring soon?](serviceExpiration/api_get_service_that_expired_soon.md)
-
+ - [How to get the list of services?](serviceList/api_get_service_list.md)

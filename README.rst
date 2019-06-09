@@ -236,6 +236,16 @@ This example assumes an existing Configuration_ with valid ``application_key``,
     import asyncio
     import asyncovh
 
+    async def grab_bill(client, bill):
+        details = await client.get("/me/bill/{0}".format(bill))
+
+        print("{0:12} ({1}): {2:10} --> {3}".format(
+            bill,
+            details['date'],
+            details['priceWithTax']['text'],
+            details['pdfUrl'],
+        ))
+
     async def main():
         # create a client
         client = asyncovh.Client()
@@ -247,15 +257,11 @@ This example assumes an existing Configuration_ with valid ``application_key``,
             # Grab bill list
             bills = await client.get("/me/bill")
 
+            tasks = []
             for bill in bills:
-                details = await client.get("/me/bill/{0}".format(bill))
+                tasks.append(grab_bill(client, bill))
 
-                print("{0:12} ({1}): {2:10} --> {3}".format(
-                    bill,
-                    details['date'],
-                    details['priceWithTax']['text'],
-                    details['pdfUrl'],
-                ))
+            await asyncio.gather(*tasks)
 
     asyncio.run(main())
 
@@ -277,6 +283,13 @@ This example assumes an existing Configuration_ with valid ``application_key``,
     import asyncio
     import asyncovh
 
+    async def get_server(client, server):
+        details = await client.get("/dedicated/server/{0}".format(server))
+        if details[u"datacenter"] == u"sbg1":
+            # enable burst on server
+            await client.put("/dedicated/server/{0}/burst".format(server), status='active')
+            print("Enabled burst for {0} server located in SBG-1".format(server))
+
     async def main():
         # create a client
         client = asyncovh.Client()
@@ -289,12 +302,11 @@ This example assumes an existing Configuration_ with valid ``application_key``,
             servers = await client.get("/dedicated/server/")
 
             # find all servers in SBG-1 datacenter
+            tasks = []
             for server in servers:
-                details = await client.get("/dedicated/server/{0}".format(server))
-                if details[u"datacenter"] == u"sbg1":
-                    # enable burst on server
-                    client.put("/dedicated/server/{0}/burst".format(server), status='active')
-                    print("Enabled burst for {0} server located in SBG-1".format(server))
+                tasks.append(get_server(client, server))
+
+            await asyncio.gather(*tasks)
 
     asyncio.run(main())
 
@@ -318,6 +330,24 @@ This example assumes an existing Configuration_ with valid ``application_key``,
     import asyncovh
     from tabulate import tabulate
 
+
+    async def get_credentials_details(client, credential_id):
+        credential_method = "/me/api/credential/{0}".format(credential_id)
+        credential_coro = client.get(credential_method)
+        application_method = "/me/api/credential/{0}/application".format(credential_id)
+        application_coro = client.get(application_method)
+
+        credential, application = await asyncio.gather(*(credential_coro, application_coro))
+
+        return [
+            credential_id,
+            "[{0}] {1}".format(application['status'], application['name']),
+            application['description'],
+            credential['creation'],
+            credential['expiration'],
+            credential['lastUse'],
+        ]
+
     async def main():
         # create a client
         client = asyncovh.Client()
@@ -328,24 +358,14 @@ This example assumes an existing Configuration_ with valid ``application_key``,
         async with client._session:
             credentials = await client.get("/me/api/credential", status="validated")
 
-            # pretty print credentials status
-            table = []
+            tasks = []
             for credential_id in credentials:
-                credential_method = "/me/api/credential/{0}".format(credential_id)
-                credential = await client.get(credential_method)
-                application_method = "/me/api/credential/{0}/application".format(credential_id)
-                application = await client.get(application_method)
+                tasks.append(get_credentials_details(client, credential_id))
 
-                table.append([
-                    credential_id,
-                    "[{0}] {1}".format(application['status'], application['name']),
-                    application['description'],
-                    credential['creation'],
-                    credential['expiration'],
-                    credential['lastUse'],
-                ])
-            print tabulate(table, headers=['ID', 'App Name', 'Description',
-                                           'Token Creation', 'Token Expiration', 'Token Last Use'])
+            table = await asyncio.gather(*tasks)
+
+            print(tabulate(table, headers=['ID', 'App Name', 'Description',
+                                           'Token Creation', 'Token Expiration', 'Token Last Use']))
 
     asyncio.run(main())
 

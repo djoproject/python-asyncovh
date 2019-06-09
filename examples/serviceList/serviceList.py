@@ -1,8 +1,10 @@
+#!/usr/bin/env python3
 # -*- encoding: utf-8 -*-
 
+import asyncio
+import asyncovh
 import datetime
 from tabulate import tabulate
-import ovh
 
 # Services type desired to mine. To speed up the script, delete service type you don't use!
 service_types 	= [ 
@@ -23,7 +25,6 @@ service_types 	= [
 	'freefax',
 	'hosting/privateDatabase',
 	'hosting/web',
-	'hosting/windows',
 	'hpcspot',
 	'license/cloudLinux',
 	'license/cpanel',
@@ -36,7 +37,6 @@ service_types 	= [
 	'license/worklight',
 	'overTheBox',
 	'pack/xdsl',
-	'partner',
 	'router',
 	'sms',
 	'telephony',
@@ -44,23 +44,47 @@ service_types 	= [
 	'veeamCloudConnect',
 	'vps',
 	'xdsl',
-	'xdsl/spare',
+	'xdsl/spare'
 ]
 
-# Create a client using ovh.conf
-client = ovh.Client()
-
-services_will_expired = []
-
-# Check all OVH product (service type)
-for service_type in service_types:
-	service_list = client.get('/%s' % service_type )
+async def get_expired_services(client, service_type):
+	service_list = await client.get("/{0}".format(service_type))
 
 	# If we found you have this one or more of this product, we get these information
+	tasks = []
 	for service in service_list:
-		service_infos = client.get('/%s/%s/serviceInfos' % (service_type, service) )
+		tasks.append(client.get("/{0}/{1}/serviceInfos".format(service_type, service)))
+
+	results = await asyncio.gather(*tasks)
+
+	rows = []
+	for service_infos in results:
 		service_expiration_date = datetime.datetime.strptime(service_infos['expiration'], '%Y-%m-%d')
-		services_will_expired.append( [ service_type, service, service_infos['status'], service_infos['expiration'] ] )
-			
-# At the end, we show service expirated or that will expirated (in a table with tabulate)
-print tabulate(services_will_expired, headers=['Type', 'ID', 'status', 'expiration date'])
+		rows.append( [ service_type, service, service_infos['status'], service_infos['expiration'] ] )
+
+	return rows
+
+async def main():
+	# Create a client using ovh.conf
+	client = asyncovh.Client()
+	await client.init()
+
+	services_will_expired = []
+
+	# Check all OVH product (service type)
+	async with client._session:
+		tasks = []
+		for service_type in service_types:
+			tasks.append(get_expired_services(client, service_type))
+		
+		results = await asyncio.gather(*tasks)
+		for rows in results:
+			services_will_expired.extend(rows)
+
+	# At the end, we show service expirated or that will expirated (in a table with tabulate)
+	print(tabulate(services_will_expired, headers=['Type', 'ID', 'status', 'expiration date']))
+
+if __name__ == "__main__":
+    import sys
+    assert sys.version_info >= (3, 7), "Script requires Python 3.7+."
+    asyncio.run(main())
